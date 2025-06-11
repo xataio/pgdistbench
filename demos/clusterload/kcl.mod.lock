@@ -1,0 +1,5 @@
+[dependencies]
+  [dependencies.k8dbbench]
+    name = "k8dbbench"
+    full_name = "k8dbbench_0.0.1"
+    version = "0.0.1"

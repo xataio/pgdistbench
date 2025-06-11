@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stress-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: stress-test-driver
+rules:
+- apiGroups: [postgresql.cnpg.io]
+  resources: [clusters]
+  verbs: [get, list, watch, create, delete, deletecollection, patch, update]
+- apiGroups: [postgresql.cnpg.io]
+  resources: [clusters/status]
+  verbs: [get, patch, update]
+- apiGroups: [postgresql.cnpg.io]
+  resources: [backups]
+  verbs: [get, list, watch, create, delete, deletecollection, patch, update]
+- apiGroups: [postgresql.cnpg.io]
+  resources: [backups/status]
+  verbs: [get]
+- apiGroups: [""]
+  resources: [pods, replicasets, secrets]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [deployments, namespaces]
+  verbs: [get, list, watch, create, delete, deletecollection, patch, update]
+- apiGroups: [postgresql.cnpg.io]
+  resources: [backups/status]
+  verbs: [get]
+- apiGroups: [""]
+  resources: [pods, replicasets, secrets]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [deployments, namespaces]
+  verbs: [get, list, watch, create, delete, deletecollection, patch, update]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stresstester
+  namespace: stress-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stress-test-driver-stresstester
+  namespace: stress-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: stress-test-driver
+subjects:
+- kind: ServiceAccount
+  name: stresstester
+  namespace: stress-test

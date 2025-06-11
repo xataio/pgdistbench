@@ -1,0 +1,5 @@
+# Ignore compiled files only
+*.exe
+/benchdriver
+/k8runner
+results/

@@ -1,0 +1,51 @@
+systems:
+  local:
+    name: local
+    namespace: benchmark
+    kind: cnpg
+    count: 1
+    spec: # CNPG cluster spec
+      instances: 1
+      storage:
+        size: 5Gi
+
+runners:
+  local:
+    name: local
+    namespace: benchmark
+    systems:
+    - name: local
+      namespace: benchmark
+      kind: cnpg
+    imagePullPolicy: IfNotPresent  # We assume the image is build within the cluster
+    spec:  # We create a deployment with single replica
+      template:
+        spec:
+          resources:
+            requests:
+              cpu: '100m'
+
+benchmarks:
+  local-tpcc-1:
+    name: local-tpcc-1
+    runner:
+      name: local
+      namespace: benchmark
+    benchmark: tpcc
+    config:
+      warehouses: 1
+      active_terminals: 10
+      duration: '1m'
+      wait_thinking: false
+      
+  local-tpch-1:
+    name: local-tpch-1
+    runner:
+      name: local
+      namespace: benchmark
+    benchmark: tpch
+    config:
+      scale_factor: 1
+      count: 1 # number of runs
+      queries: [q1, q2, q3, q4, q5, q6, q7] # just a few queries
+      enable_query_tuning: true
