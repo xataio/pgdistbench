@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -o pipefail
 
 usage() {
     echo "Usage: $0 -r <aws-region> -i <image-name>[:<tag>] [-e <ecr-image-name>] [-p <aws-profile>] [aws-account-id]"
