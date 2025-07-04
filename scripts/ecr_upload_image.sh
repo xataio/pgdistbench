@@ -36,7 +36,7 @@ while getopts ":r:i:e:p:" opt; do
       usage
       ;;
     : )
-      echo "Invalid option: $OPTARG requires an argument" 1>&2
+      echo "Option -$OPTARG requires an argument" 1>&2
       usage
       ;;
   esac
