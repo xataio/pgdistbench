@@ -102,6 +102,7 @@ func (r *stressInstanceRegistry) reset() {
 }
 
 const LabelStressTestInstance = "bench.maki.tech/stress-test-instance"
+const LabelStressTestInstanceName = "bench.maki.tech/stress-test-instance-name"
 
 var durationInfinite = benchdriverapi.Duration{Duration: 0} // infinite
 
@@ -181,7 +182,7 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 			}
 
 			log.Printf("Instance %s: performing cluster cleanup and deletion", si.name)
-			if err := si.destroyWithRetry(context.Background(), StressTestNamespace, si.name); err != nil {
+			if err := si.destroyAllWithRetry(context.Background(), StressTestNamespace, si.name); err != nil {
 				metrics.ErrClusterDelete.WithLabelValues(si.owner.name).Inc()
 				log.Printf("ERROR destroying cluster: %v", err)
 			} else {
@@ -431,8 +432,9 @@ func (si *stressInstance) createCluster(ctx context.Context, name string) (*cnpg
 		config.Instance.Metadata["labels"] = map[string]any{}
 	}
 	labels := config.Instance.Metadata["labels"].(map[string]any)
-	labels[LabelStressTestInstance] = "true"
 	labels[LabelStressUser] = si.owner.name
+	labels[LabelStressTestInstance] = "true"
+	labels[LabelStressTestInstanceName] = name
 
 	systemConfig := systems.SystemsConfig{
 		Name:      name,
@@ -451,7 +453,7 @@ func (si *stressInstance) createCluster(ctx context.Context, name string) (*cnpg
 }
 
 func (si *stressInstance) waitClusterReady(ctx context.Context, cluster *cnpgapi.Cluster) (*cnpgapi.Cluster, error) {
-	log.Printf("Instance %s: waiting for cluster ready", si.name)
+	log.Printf("Instance %s: waiting for cluster ready: %s", si.name, cluster.Name)
 
 	if cnpgutil.ClusterReady(cluster) {
 		return cluster, nil
@@ -490,8 +492,8 @@ func (si *stressInstance) deregister() {
 	delete(si.registry.starting, si.name)
 }
 
-func (si *stressInstance) destroyWithRetry(ctx context.Context, namespace, name string) error {
-	log.Printf("Instance %s: destroying cluster with retry logic", si.name)
+func (si *stressInstance) destroyAllWithRetry(ctx context.Context, namespace, name string) error {
+	log.Printf("Instance %s: destroying cluster with retry logic", name)
 
 	operation := func() (any, error) {
 		err := si.destroy(ctx, namespace, name)
@@ -518,15 +520,23 @@ func (si *stressInstance) destroyWithRetry(ctx context.Context, namespace, name 
 }
 
 func (si *stressInstance) destroy(ctx context.Context, namespace, name string) error {
-	log.Printf("Instance %s: destroying cluster", si.name)
+	log.Printf("Instance %s: destroying cluster", name)
 
 	client, err := si.owner.tester.getCNPGClient()
 	if err != nil {
 		return fmt.Errorf("get cnpg client: %w", err)
 	}
 
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			LabelStressTestInstanceName: name,
+		},
+	})
+
 	log.Printf("Deleting cluster %s", name)
-	if err := client.Clusters(namespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+	if err := client.Clusters(namespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
+		LabelSelector: selector,
+	}); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
