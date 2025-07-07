@@ -527,16 +527,23 @@ func (si *stressInstance) destroy(ctx context.Context, namespace, name string) e
 		return fmt.Errorf("get cnpg client: %w", err)
 	}
 
-	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{
-			LabelStressTestInstanceName: name,
-		},
-	})
+	clustersClient := client.Clusters(namespace)
+	listOptions := metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				LabelStressTestInstanceName: name,
+			},
+		}),
+	}
+
+	// double check if there is any cluster left in the namespace
+	list, tmpErr := clustersClient.List(ctx, listOptions)
+	if tmpErr == nil && len(list.Items) == 0 {
+		return nil
+	}
 
 	log.Printf("Deleting cluster %s", name)
-	if err := client.Clusters(namespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
-		LabelSelector: selector,
-	}); err != nil {
+	if err := clustersClient.DeleteCollection(ctx, metav1.DeleteOptions{}, listOptions); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
@@ -549,7 +556,7 @@ func (si *stressInstance) destroy(ctx context.Context, namespace, name string) e
 	}
 
 	// Set timeout for deletion - shorter if we're in a hurry (force deletion context)
-	deleteTimeout := 5 * time.Minute
+	deleteTimeout := 30 * time.Second
 	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
 		// If the context already has a deadline, respect it and use a shorter timeout
 		remaining := time.Until(deadline)
@@ -566,7 +573,7 @@ func (si *stressInstance) destroy(ctx context.Context, namespace, name string) e
 	deleteCtx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
 
-	if err := cnpgutil.WaitClusterDeleted(deleteCtx, clusterClient, name, namespace, deleteTimeout); err != nil {
+	if err := cnpgutil.WaitClusterDeleteList(deleteCtx, clusterClient, namespace, len(list.Items), listOptions); err != nil {
 		return fmt.Errorf("wait for cluster deletion: %w", err)
 	}
 

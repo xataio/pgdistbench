@@ -101,6 +101,35 @@ func WaitClusterDeleted(ctx context.Context, client v1.ClustersInterface, name, 
 	return errors.New("Cluster deletion not completed")
 }
 
+func WaitClusterDeleteList(ctx context.Context, client v1.ClustersInterface, namespace string, count int, listOptions metav1.ListOptions) error {
+	if count == 0 {
+		list, err := client.List(ctx, listOptions)
+		if err != nil {
+			return fmt.Errorf("list clusters: %w", err)
+		}
+		count = len(list.Items)
+		if count == 0 {
+			return nil
+		}
+	}
+
+	watcher := k8util.NewWatcher[*cnpgapi.Cluster](ctx, client, listOptions)
+	for eventType, _ := range watcher.Iter(ctx) {
+		if eventType == "DELETED" {
+			count--
+			if count == 0 {
+				break
+			}
+		}
+	}
+
+	err := watcher.Err()
+	if err != nil {
+		return fmt.Errorf("watch cluster deletion: %w", err)
+	}
+	return nil
+}
+
 func ClusterReady(cluster *cnpgapi.Cluster) bool {
 	ready, _ := k8util.CheckCondTrue(cluster.Status.Conditions, "Ready")
 	return ready
