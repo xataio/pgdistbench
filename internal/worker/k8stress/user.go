@@ -234,8 +234,6 @@ func (u *stressUser) deleteCluster(ctx context.Context) (bool, error) {
 	}
 
 	inst.cancel()
-	delete(u.registry.active, inst.name)
-	delete(u.registry.instances, inst.name)
 
 	return true, nil
 }
@@ -254,14 +252,18 @@ func createTimer(dist *benchdriverapi.JitterDuration, def prop.UniformJitterDura
 func selectOp(active, total, min, max int) clusterOp {
 	log.Println("selectOp:", active, total, min, max)
 
-	switch active {
+	switch total {
 	case 0:
 		return clusterOpCreate
-	case max:
-		return clusterOpDelete
 	default:
+		if total >= max {
+			return clusterOpDelete
+		}
+		if total < min {
+			return clusterOpCreate
+		}
 		// The deletion probability is higher the more instances we have in the cluster
-		if prop.Bool(float64(active-min) / float64(max-min)).Next() {
+		if prop.Bool(float64(total-min) / float64(max-min)).Next() {
 			return clusterOpDelete
 		}
 

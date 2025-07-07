@@ -77,18 +77,6 @@ func getEnvOr(name, def string) string {
 	return v
 }
 
-func parseEnv[T any](name string, or T, parser func(string) (T, error)) (T, error) {
-	v := os.Getenv(name)
-	if v == "" {
-		return or, nil
-	}
-	parsed, err := parser(v)
-	if err != nil {
-		return or, fmt.Errorf("read env var %s: %w", name, err)
-	}
-	return parsed, nil
-}
-
 func loadK8sClusterRestConfig() (*rest.Config, error) {
 	config, inClusterErr := rest.InClusterConfig()
 	if inClusterErr != nil {
