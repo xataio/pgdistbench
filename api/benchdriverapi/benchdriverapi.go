@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+// VersionInfo represents version information from benchdriver
+type VersionInfo struct {
+	Version    string    `json:"version"`
+	Commit     string    `json:"commit"`
+	BuildTime  time.Time `json:"buildTime,omitempty"`
+	DirtyBuild bool      `json:"dirtyBuild"`
+	GoVersion  string    `json:"goVersion"`
+	MainModule string    `json:"mainModule"`
+}
+
 type WorkerStatus[T any] struct {
 	Code StatusCode `json:"code"`
 	Task TaskName   `json:"task,omitempty"`

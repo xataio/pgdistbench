@@ -532,6 +532,35 @@ func (si *stressInstance) destroy(ctx context.Context, namespace, name string) e
 		}
 		return fmt.Errorf("delete operation: %w", err)
 	}
+
+	clusterClient, err := si.owner.tester.getClustersClient()
+	if err != nil {
+		return fmt.Errorf("get clusters client for deletion wait: %w", err)
+	}
+
+	// Set timeout for deletion - shorter if we're in a hurry (force deletion context)
+	deleteTimeout := 5 * time.Minute
+	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
+		// If the context already has a deadline, respect it and use a shorter timeout
+		remaining := time.Until(deadline)
+		if remaining < deleteTimeout {
+			deleteTimeout = remaining - (2 * time.Second) // Leave 2s buffer
+			if deleteTimeout <= 0 {
+				deleteTimeout = 5 * time.Second // Minimum timeout
+			}
+		}
+	}
+
+	// Wait for the cluster to actually be deleted from Kubernetes
+	log.Printf("Instance %s: waiting for cluster deletion to complete (timeout: %v)", si.name, deleteTimeout)
+	deleteCtx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
+	if err := cnpgutil.WaitClusterDeleted(deleteCtx, clusterClient, name, namespace, deleteTimeout); err != nil {
+		return fmt.Errorf("wait for cluster deletion: %w", err)
+	}
+
+	log.Printf("Instance %s: cluster deletion confirmed", si.name)
 	return nil
 }
 

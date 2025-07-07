@@ -20,6 +20,9 @@ type Runner struct {
 }
 
 func New(cfg worker.Config) *Runner {
+	log.Printf("Creating new worker runner (config: host=%s, user=%s, database=%s)",
+		cfg.PGHost, cfg.PGUser, cfg.PGDatabase)
+
 	w := &Runner{
 		Config: cfg,
 		ch:     make(chan any, 1),
@@ -29,6 +32,9 @@ func New(cfg worker.Config) *Runner {
 }
 
 func (r *Runner) Run(ctx context.Context) {
+	log.Printf("Worker runner starting")
+	defer log.Printf("Worker runner stopped")
+
 	var wg sync.WaitGroup
 	var activeTask func(context.Context) (any, error)
 	var taskCh chan benchdriverapi.Result[any]

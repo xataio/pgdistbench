@@ -3,8 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
-	"pgdistbench/pkg/client"
 	"maps"
+	"pgdistbench/pkg/client"
 	"slices"
 	"sort"
 
@@ -25,6 +25,7 @@ func runnerCmd() *cobra.Command {
 	cmd.AddCommand(runnerApplyCmd())
 	cmd.AddCommand(runnerDeleteCmd())
 	cmd.AddCommand(runnerStatusCmd())
+	cmd.AddCommand(runnerVersionCmd())
 	cmd.AddCommand(runnerCancelTaskCmd())
 	cmd.AddCommand(runnerRestartCmd())
 	cmd.AddCommand(runnerMetrics())
@@ -134,6 +135,55 @@ func runnerStatusCmd() *cobra.Command {
 			}
 
 			fmt.Println("All runners are ready")
+
+			return nil
+		},
+	}
+}
+
+func runnerVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Get version information of a test driver setup",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			br, err := NewBRun()
+			if err != nil {
+				return err
+			}
+			defer br.Close()
+
+			cfg, err := readRunnerConfig(args)
+			if err != nil {
+				return err
+			}
+
+			versions, err := br.Runners().Access(cfg).Versions(context.Background())
+			if err != nil {
+				return fmt.Errorf("get version information: %w", err)
+			}
+
+			fmt.Println("Version Information:")
+			for _, v := range versions {
+				fmt.Printf("Pod: %s (Ready: %v)\n", v.PodName, v.PodReady)
+				if v.Error != "" {
+					fmt.Printf("  Error: %s\n", v.Error)
+				} else {
+					fmt.Printf("  Version: %s\n", v.VersionInfo.Version)
+					fmt.Printf("  Commit: %s\n", v.VersionInfo.Commit)
+					if !v.VersionInfo.BuildTime.IsZero() {
+						fmt.Printf("  Build Time: %s\n", v.VersionInfo.BuildTime.Format("2006-01-02 15:04:05 UTC"))
+					}
+					fmt.Printf("  Go Version: %s\n", v.VersionInfo.GoVersion)
+					if v.VersionInfo.MainModule != "" {
+						fmt.Printf("  Module: %s\n", v.VersionInfo.MainModule)
+					}
+					if v.VersionInfo.DirtyBuild {
+						fmt.Printf("  ⚠️  Dirty Build: Repository had uncommitted changes\n")
+					}
+				}
+				fmt.Println()
+			}
+
 			return nil
 		},
 	}
