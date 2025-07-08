@@ -16,6 +16,7 @@ type EndpointInfo struct {
 	Port     int
 	User     string
 	Password string
+	Database string
 }
 
 func CreateClusterConnEnvVars(secretKey string) []corev1.EnvVar {
@@ -24,6 +25,7 @@ func CreateClusterConnEnvVars(secretKey string) []corev1.EnvVar {
 		k8util.SecretKeyEnvVar(systems.EnvVarPGPort, secretKey, "port"),
 		k8util.SecretKeyEnvVar(systems.EnvVarPGUser, secretKey, "user"),
 		k8util.SecretKeyEnvVar(systems.EnvVarPGPass, secretKey, "password"),
+		k8util.SecretKeyEnvVar(systems.EnvVarPGDBName, secretKey, "dbname"),
 	}
 }
 
@@ -49,11 +51,15 @@ func EndpointFromSecret(secret *corev1.Secret) (info EndpointInfo, err error) {
 
 	info.User = "postgres"
 	info.Password = ""
+	info.Database = "postgres"
 	if user, ok := secret.Data["user"]; ok {
 		info.User = string(user)
 	}
 	if pass, ok := secret.Data["password"]; ok {
 		info.Password = string(pass)
+	}
+	if dbname, ok := secret.Data["dbname"]; ok {
+		info.Database = string(dbname)
 	}
 
 	return info, nil

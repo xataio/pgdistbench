@@ -128,9 +128,15 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 	liveMinAge := benchdriverapi.GetOptValue(si.config.Test.LiveMinAge, benchdriverapi.Duration{Duration: 1 * time.Minute}).Duration
 
 	activeRunners := si.owner.tester.metrics.Run.ActiveTestRunners.WithLabelValues(si.owner.name)
+
+	log.Printf("Instance %s: registering", si.name)
 	activeRunners.Inc()
-	defer activeRunners.Dec()
-	defer si.deregister()
+	defer func() {
+		log.Printf("Instance %s: unregistering", si.name)
+		si.deregister()
+		activeRunners.Dec()
+		log.Printf("Instance %s: unregistered", si.name)
+	}()
 
 	log.Printf("Starting stress instance %s", si.name)
 	defer log.Printf("Stopped stress instance %s", si.name)
@@ -155,43 +161,20 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 		return nil
 	}
 
-	// Set up force deletion that triggers 30 seconds after cancellation
-	//
 	// Note: We register the 'destroy' cluster operation before the 'create' operation.
 	//       This is to ensure that the cluster is destroyed if the 'create'
 	//       operation fails, but the resource was created anyways. For example
 	//       due to a network error after the instance was created within
 	//       Kubernetes.
-	//
-	//       The force deletion is triggered by a stop signal received during
-	//       the benchmark run. This is to ensure that the test really stops in case
-	//       the postgres clients are blocking the runner from completing the
-	//       cleanup. By deleting the DB we hopefully force an error on the
-	//       clients.
-	cleanupStarted := make(chan struct{})
-	ctx, cancel := ctxutil.WithFuncContext(ctx, func() {
-		log.Printf("Instance %s: stop signal received, starting force deletion timer", si.name)
-
-		go func() {
-			// Wait 30 seconds for normal cleanup to start
-			select {
-			case <-time.After(30 * time.Second):
-				log.Printf("Instance %s: normal cleanup timeout, starting force deletion", si.name)
-			case <-cleanupStarted:
-				log.Printf("Instance %s: normal cleanup started, waiting for completion", si.name)
-			}
-
-			log.Printf("Instance %s: performing cluster cleanup and deletion", si.name)
-			if err := si.destroyAllWithRetry(context.Background(), StressTestNamespace, si.name); err != nil {
-				metrics.ErrClusterDelete.WithLabelValues(si.owner.name).Inc()
-				log.Printf("ERROR destroying cluster: %v", err)
-			} else {
-				log.Printf("Instance %s: cluster cleanup completed successfully", si.name)
-			}
-		}()
-	})
-	defer cancel()
-	defer close(cleanupStarted) // notify context handler that we are handling a normal cleanup
+	defer func() {
+		log.Printf("Instance %s: performing cluster cleanup and deletion", si.name)
+		if err := si.destroyAllWithRetry(context.Background(), StressTestNamespace, si.name); err != nil {
+			metrics.ErrClusterDelete.WithLabelValues(si.owner.name).Inc()
+			log.Printf("ERROR destroying cluster: %v", err)
+		} else {
+			log.Printf("Instance %s: cluster cleanup completed successfully", si.name)
+		}
+	}()
 
 	cluster, err := si.createCluster(ctx, si.name)
 	if err != nil {
@@ -367,6 +350,9 @@ func runStressStep(
 	}
 
 	eg.Go(func() error {
+		log.Printf("Instance %s: starting live stats collector", si.name)
+		defer log.Printf("Instance %s: stopping live stats collector", si.name)
+
 		for ctx.Err() == nil {
 			func() {
 				defer func() {

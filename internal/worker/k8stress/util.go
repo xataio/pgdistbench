@@ -15,12 +15,17 @@ import (
 )
 
 func tpccTaskFactoryFromEndpoint(ep syscnpg.EndpointInfo) *tpcc.Factory {
+	databaseName := "postgres"
+	if ep.Database != "" {
+		databaseName = ep.Database
+	}
+
 	instConfig := worker.Config{
 		PGHost:     ep.Host,
 		PGPort:     strconv.Itoa(ep.Port),
 		PGUser:     ep.User,
 		PGPass:     ep.Password,
-		PGDatabase: "postgres",
+		PGDatabase: databaseName,
 		PGSSLMode:  "disable",
 	}
 	return tpcc.NewFactory(instConfig)

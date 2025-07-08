@@ -25,6 +25,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"net/http/pprof"
+
 	// Link all k8s auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -128,6 +130,18 @@ func run(versionInfo benchdriverapi.VersionInfo) error {
 		versionHandler(w, r, versionInfo)
 	})
 	h.RegisterRoutes(router)
+
+	// add /debug/pprof/
+	pprofRouter := chi.NewRouter()
+	pprofRouter.HandleFunc("/", pprof.Index)
+	for _, name := range []string{"goroutine", "heap", "allocs", "block", "mutex", "threadcreate"} {
+		pprofRouter.HandleFunc("/"+name, pprof.Handler(name).ServeHTTP)
+	}
+	pprofRouter.HandleFunc("/cmdline", pprof.Cmdline)
+	pprofRouter.HandleFunc("/profile", pprof.Profile)
+	pprofRouter.HandleFunc("/symbol", pprof.Symbol)
+	pprofRouter.HandleFunc("/trace", pprof.Trace)
+	router.Mount("/debug/pprof", pprofRouter)
 
 	fmt.Printf("Listening on :8080 (version %s, commit %s)\n", versionInfo.Version, versionInfo.Commit)
 	defer fmt.Println("Goodbye!")
