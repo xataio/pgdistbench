@@ -72,6 +72,9 @@ func (b *Tester) LiveStats() (stats []benchdriverapi.OpStats) {
 }
 
 func (b *Tester) Prepare(ctx context.Context, cfg tpcc.Config, check bool) (err error) {
+	log.Printf("TPCC Prepare: starting")
+	defer log.Printf("TPCC Prepare: finished")
+
 	ctx, cancel := ctxutil.WithFuncContext(ctx, func() {
 		log.Printf("TPCC Prepare: stop signal received")
 	})
@@ -89,7 +92,9 @@ func (b *Tester) Prepare(ctx context.Context, cfg tpcc.Config, check bool) (err 
 
 		err := w.Prepare(threadCtx, index)
 		if err != nil {
-			return fmt.Errorf("prepare thread %d: %w", index, err)
+			err = fmt.Errorf("prepare thread %d: %w", index, err)
+			log.Printf("TPCC Prepare: prepare thread %d error: %v", index, err)
+			return err
 		}
 		return nil
 	})

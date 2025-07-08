@@ -73,6 +73,63 @@ func WaitClusterReady(ctx context.Context, client v1.ClustersInterface, name, na
 	return errors.New("Cluster is not ready yet")
 }
 
+func WaitClusterDeleted(ctx context.Context, client v1.ClustersInterface, name, namespace string, timeout time.Duration) error {
+	opts := metav1.ListOptions{
+		FieldSelector: fields.SelectorFromSet(map[string]string{
+			"metadata.name":      name,
+			"metadata.namespace": namespace,
+		}).String(),
+	}
+
+	if timeout > 0 {
+		timeoutSecs := int64(timeout.Seconds())
+		opts.TimeoutSeconds = &timeoutSecs
+	}
+
+	watcher := k8util.NewWatcher[*cnpgapi.Cluster](ctx, client, opts)
+	for eventType, _ := range watcher.Iter(ctx) {
+		if eventType == "DELETED" {
+			return nil // Successfully deleted
+		}
+		// Continue watching for other events until we see DELETED
+	}
+
+	err := watcher.Err()
+	if err != nil {
+		return fmt.Errorf("watch cluster deletion: %w", err)
+	}
+	return errors.New("Cluster deletion not completed")
+}
+
+func WaitClusterDeleteList(ctx context.Context, client v1.ClustersInterface, namespace string, count int, listOptions metav1.ListOptions) error {
+	if count == 0 {
+		list, err := client.List(ctx, listOptions)
+		if err != nil {
+			return fmt.Errorf("list clusters: %w", err)
+		}
+		count = len(list.Items)
+		if count == 0 {
+			return nil
+		}
+	}
+
+	watcher := k8util.NewWatcher[*cnpgapi.Cluster](ctx, client, listOptions)
+	for eventType, _ := range watcher.Iter(ctx) {
+		if eventType == "DELETED" {
+			count--
+			if count == 0 {
+				break
+			}
+		}
+	}
+
+	err := watcher.Err()
+	if err != nil {
+		return fmt.Errorf("watch cluster deletion: %w", err)
+	}
+	return nil
+}
+
 func ClusterReady(cluster *cnpgapi.Cluster) bool {
 	ready, _ := k8util.CheckCondTrue(cluster.Status.Conditions, "Ready")
 	return ready

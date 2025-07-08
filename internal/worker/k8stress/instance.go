@@ -22,6 +22,7 @@ import (
 	cnpgapi "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -101,6 +102,7 @@ func (r *stressInstanceRegistry) reset() {
 }
 
 const LabelStressTestInstance = "bench.maki.tech/stress-test-instance"
+const LabelStressTestInstanceName = "bench.maki.tech/stress-test-instance-name"
 
 var durationInfinite = benchdriverapi.Duration{Duration: 0} // infinite
 
@@ -126,16 +128,18 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 	liveMinAge := benchdriverapi.GetOptValue(si.config.Test.LiveMinAge, benchdriverapi.Duration{Duration: 1 * time.Minute}).Duration
 
 	activeRunners := si.owner.tester.metrics.Run.ActiveTestRunners.WithLabelValues(si.owner.name)
+
+	log.Printf("Instance %s: registering", si.name)
 	activeRunners.Inc()
-	defer activeRunners.Dec()
-	defer si.deregister()
+	defer func() {
+		log.Printf("Instance %s: unregistering", si.name)
+		si.deregister()
+		activeRunners.Dec()
+		log.Printf("Instance %s: unregistered", si.name)
+	}()
 
 	log.Printf("Starting stress instance %s", si.name)
 	defer log.Printf("Stopped stress instance %s", si.name)
-	ctx, cancel := ctxutil.WithFuncContext(ctx, func() {
-		log.Printf("Instance %s: stop signal received", si.name)
-	})
-	defer cancel()
 
 	defer func() {
 		err := ctx.Err()
@@ -157,17 +161,26 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 		return nil
 	}
 
-	cluster, err := si.createCluster(ctx)
+	// Note: We register the 'destroy' cluster operation before the 'create' operation.
+	//       This is to ensure that the cluster is destroyed if the 'create'
+	//       operation fails, but the resource was created anyways. For example
+	//       due to a network error after the instance was created within
+	//       Kubernetes.
+	defer func() {
+		log.Printf("Instance %s: performing cluster cleanup and deletion", si.name)
+		if err := si.destroyAllWithRetry(context.Background(), StressTestNamespace, si.name); err != nil {
+			metrics.ErrClusterDelete.WithLabelValues(si.owner.name).Inc()
+			log.Printf("ERROR destroying cluster: %v", err)
+		} else {
+			log.Printf("Instance %s: cluster cleanup completed successfully", si.name)
+		}
+	}()
+
+	cluster, err := si.createCluster(ctx, si.name)
 	if err != nil {
 		incNotCancelled(err, metrics.ErrClusterCreate.WithLabelValues(si.owner.name))
 		return fmt.Errorf("create cluster: %w", err)
 	}
-	defer func() {
-		if err := si.destroy(context.Background(), cluster); err != nil {
-			metrics.ErrClusterDelete.WithLabelValues(si.owner.name).Inc()
-			log.Printf("ERROR destroying cluster: %v", err)
-		}
-	}()
 
 	if cluster, err = si.waitClusterReady(ctx, cluster); err != nil {
 		incNotCancelled(err, metrics.ErrClusterCreate.WithLabelValues(si.owner.name))
@@ -337,6 +350,9 @@ func runStressStep(
 	}
 
 	eg.Go(func() error {
+		log.Printf("Instance %s: starting live stats collector", si.name)
+		defer log.Printf("Instance %s: stopping live stats collector", si.name)
+
 		for ctx.Err() == nil {
 			func() {
 				defer func() {
@@ -386,8 +402,8 @@ func runStressStep(
 	return err
 }
 
-func (si *stressInstance) createCluster(ctx context.Context) (*cnpgapi.Cluster, error) {
-	log.Printf("Instance %s: creating cluster", si.name)
+func (si *stressInstance) createCluster(ctx context.Context, name string) (*cnpgapi.Cluster, error) {
+	log.Printf("Instance %s: creating cluster", name)
 
 	client, err := syscnpg.NewSystemClientForConfig(si.owner.tester.restConfig, StressTestNamespace)
 	if err != nil {
@@ -402,11 +418,12 @@ func (si *stressInstance) createCluster(ctx context.Context) (*cnpgapi.Cluster, 
 		config.Instance.Metadata["labels"] = map[string]any{}
 	}
 	labels := config.Instance.Metadata["labels"].(map[string]any)
-	labels[LabelStressTestInstance] = "true"
 	labels[LabelStressUser] = si.owner.name
+	labels[LabelStressTestInstance] = "true"
+	labels[LabelStressTestInstanceName] = name
 
 	systemConfig := systems.SystemsConfig{
-		Name:      si.name,
+		Name:      name,
 		Namespace: StressTestNamespace,
 		Kind:      "cnpg",
 		Count:     1,
@@ -422,7 +439,7 @@ func (si *stressInstance) createCluster(ctx context.Context) (*cnpgapi.Cluster, 
 }
 
 func (si *stressInstance) waitClusterReady(ctx context.Context, cluster *cnpgapi.Cluster) (*cnpgapi.Cluster, error) {
-	log.Printf("Instance %s: waiting for cluster ready", si.name)
+	log.Printf("Instance %s: waiting for cluster ready: %s", si.name, cluster.Name)
 
 	if cnpgutil.ClusterReady(cluster) {
 		return cluster, nil
@@ -461,18 +478,92 @@ func (si *stressInstance) deregister() {
 	delete(si.registry.starting, si.name)
 }
 
-func (si *stressInstance) destroy(ctx context.Context, cluster *cnpgapi.Cluster) error {
-	log.Printf("Instance %s: destroying cluster", si.name)
+func (si *stressInstance) destroyAllWithRetry(ctx context.Context, namespace, name string) error {
+	log.Printf("Instance %s: destroying cluster with retry logic", name)
+
+	operation := func() (any, error) {
+		err := si.destroy(ctx, namespace, name)
+		if err != nil {
+			log.Printf("Instance %s: destroy attempt failed, will retry: %v", si.name, err)
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.InitialInterval = 5 * time.Second
+	expBackoff.MaxInterval = 1 * time.Minute
+	expBackoff.Multiplier = 2.0
+
+	// Retry for up to 20 attempts with exponential backoff
+	_, err := backoff.Retry(ctx, operation, backoff.WithMaxTries(20))
+	if err != nil {
+		return fmt.Errorf("destroy with retry failed after all attempts: %w", err)
+	}
+
+	log.Printf("Instance %s: cluster destroyed successfully", si.name)
+	return nil
+}
+
+func (si *stressInstance) destroy(ctx context.Context, namespace, name string) error {
+	log.Printf("Instance %s: destroying cluster", name)
 
 	client, err := si.owner.tester.getCNPGClient()
 	if err != nil {
 		return fmt.Errorf("get cnpg client: %w", err)
 	}
 
-	log.Printf("Deleting cluster %s", cluster.Name)
-	if err := client.Clusters(cluster.Namespace).Delete(ctx, cluster.Name, metav1.DeleteOptions{}); err != nil {
+	clustersClient := client.Clusters(namespace)
+	listOptions := metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				LabelStressTestInstanceName: name,
+			},
+		}),
+	}
+
+	// double check if there is any cluster left in the namespace
+	list, tmpErr := clustersClient.List(ctx, listOptions)
+	if tmpErr == nil && len(list.Items) == 0 {
+		return nil
+	}
+
+	log.Printf("Deleting cluster %s", name)
+	if err := clustersClient.DeleteCollection(ctx, metav1.DeleteOptions{}, listOptions); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return fmt.Errorf("delete operation: %w", err)
 	}
+
+	clusterClient, err := si.owner.tester.getClustersClient()
+	if err != nil {
+		return fmt.Errorf("get clusters client for deletion wait: %w", err)
+	}
+
+	// Set timeout for deletion - shorter if we're in a hurry (force deletion context)
+	deleteTimeout := 30 * time.Second
+	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
+		// If the context already has a deadline, respect it and use a shorter timeout
+		remaining := time.Until(deadline)
+		if remaining < deleteTimeout {
+			deleteTimeout = remaining - (2 * time.Second) // Leave 2s buffer
+			if deleteTimeout <= 0 {
+				deleteTimeout = 5 * time.Second // Minimum timeout
+			}
+		}
+	}
+
+	// Wait for the cluster to actually be deleted from Kubernetes
+	log.Printf("Instance %s: waiting for cluster deletion to complete (timeout: %v)", si.name, deleteTimeout)
+	deleteCtx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
+	if err := cnpgutil.WaitClusterDeleteList(deleteCtx, clusterClient, namespace, len(list.Items), listOptions); err != nil {
+		return fmt.Errorf("wait for cluster deletion: %w", err)
+	}
+
+	log.Printf("Instance %s: cluster deletion confirmed", si.name)
 	return nil
 }
 

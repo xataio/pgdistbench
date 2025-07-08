@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"pgdistbench/api/benchdriverapi"
 	"pgdistbench/pkg/client/systems"
 
 	dto "github.com/prometheus/client_model/go"
@@ -758,4 +760,67 @@ func checkRunnerStatus(st *RunnerSystemStatus) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// RunnerVersionInfo combines runner pod info with version data
+type RunnerVersionInfo struct {
+	PodName     string                     `json:"podName"`
+	PodReady    bool                       `json:"podReady"`
+	VersionInfo benchdriverapi.VersionInfo `json:"versionInfo"`
+	Error       string                     `json:"error,omitempty"`
+}
+
+func (r *Runners) Versions(ctx context.Context, ref RunnerRef) ([]RunnerVersionInfo, error) {
+	clusterURL, _, err := rest.DefaultServerUrlFor(r.restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("get cluster URL: %w", err)
+	}
+
+	pods, err := r.GetPodGroups(ctx, RunnerRef{Namespace: ref.Namespace, Name: ref.Name})
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := rest.HTTPClientFor(r.restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("init http client: %w", err)
+	}
+
+	var results []RunnerVersionInfo
+	for _, grp := range pods {
+		for _, pod := range grp.Pods {
+			versionURL := podProxyUrl(clusterURL, pod.Namespace, pod.Name, "version")
+
+			versionInfo := RunnerVersionInfo{
+				PodName:  pod.Name,
+				PodReady: pod.Status.Phase == corev1.PodPhase("Running"),
+			}
+
+			// Try to fetch version info from this pod
+			resp, err := client.Get(versionURL.String())
+			if err != nil {
+				versionInfo.Error = fmt.Sprintf("failed to get version: %v", err)
+			} else {
+				defer resp.Body.Close()
+				if resp.StatusCode == 200 {
+					var version benchdriverapi.VersionInfo
+					if err := json.NewDecoder(resp.Body).Decode(&version); err != nil {
+						versionInfo.Error = fmt.Sprintf("failed to decode version: %v", err)
+					} else {
+						versionInfo.VersionInfo = version
+					}
+				} else {
+					versionInfo.Error = fmt.Sprintf("version endpoint returned: %s", resp.Status)
+				}
+			}
+
+			results = append(results, versionInfo)
+		}
+	}
+
+	return results, nil
+}
+
+func (r *Runner) Versions(ctx context.Context) ([]RunnerVersionInfo, error) {
+	return r.runners.Versions(ctx, RunnerRef{Namespace: r.cfg.Namespace, Name: r.cfg.Name})
 }

@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"runtime"
+	"runtime/debug"
+	"time"
 
+	"pgdistbench/api/benchdriverapi"
 	"pgdistbench/internal/server"
 	"pgdistbench/internal/worker"
 	"pgdistbench/internal/worker/runner"
@@ -20,18 +25,77 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"net/http/pprof"
+
 	// Link all k8s auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
+// getVersionInfo extracts version information from build info
+func getVersionInfo() benchdriverapi.VersionInfo {
+	info := benchdriverapi.VersionInfo{
+		Version:   "dev",
+		Commit:    "unknown",
+		GoVersion: runtime.Version(),
+	}
+
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return info
+	}
+
+	// Get main module info
+	info.MainModule = buildInfo.Main.Path
+	if buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
+		info.Version = buildInfo.Main.Version
+	}
+
+	// Extract VCS information from build settings
+	for _, setting := range buildInfo.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			info.Commit = setting.Value
+		case "vcs.time":
+			if t, err := time.Parse(time.RFC3339, setting.Value); err == nil {
+				info.BuildTime = t
+			}
+		case "vcs.modified":
+			info.DirtyBuild = setting.Value == "true"
+		}
+	}
+
+	// If we have a dirty build, indicate it in the commit
+	if info.DirtyBuild && info.Commit != "unknown" {
+		info.Commit += "+dirty"
+	}
+
+	return info
+}
+
 func main() {
-	if err := run(); err != nil {
+	// Get version information
+	versionInfo := getVersionInfo()
+
+	// Print version information at startup
+	log.Printf("pgdistbench benchdriver starting")
+	log.Printf("Version: %s", versionInfo.Version)
+	log.Printf("Commit: %s", versionInfo.Commit)
+	if !versionInfo.BuildTime.IsZero() {
+		log.Printf("Build Time: %s", versionInfo.BuildTime.Format(time.RFC3339))
+	}
+	log.Printf("Go Version: %s", versionInfo.GoVersion)
+	log.Printf("Main Module: %s", versionInfo.MainModule)
+	if versionInfo.DirtyBuild {
+		log.Printf("Warning: Built from dirty repository")
+	}
+
+	if err := run(versionInfo); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(versionInfo benchdriverapi.VersionInfo) error {
 	flag.Parse()
 
 	cfg, err := readWorkerConfig()
@@ -62,11 +126,32 @@ func run() error {
 	h.Metrics = metrics
 
 	router.Get("/metrics", promhttp.HandlerFor(metrics, promhttp.HandlerOpts{}).ServeHTTP)
+	router.Get("/version", func(w http.ResponseWriter, r *http.Request) {
+		versionHandler(w, r, versionInfo)
+	})
 	h.RegisterRoutes(router)
 
-	fmt.Println("Listening on :8080")
+	// add /debug/pprof/
+	pprofRouter := chi.NewRouter()
+	pprofRouter.HandleFunc("/", pprof.Index)
+	for _, name := range []string{"goroutine", "heap", "allocs", "block", "mutex", "threadcreate"} {
+		pprofRouter.HandleFunc("/"+name, pprof.Handler(name).ServeHTTP)
+	}
+	pprofRouter.HandleFunc("/cmdline", pprof.Cmdline)
+	pprofRouter.HandleFunc("/profile", pprof.Profile)
+	pprofRouter.HandleFunc("/symbol", pprof.Symbol)
+	pprofRouter.HandleFunc("/trace", pprof.Trace)
+	router.Mount("/debug/pprof", pprofRouter)
+
+	fmt.Printf("Listening on :8080 (version %s, commit %s)\n", versionInfo.Version, versionInfo.Commit)
 	defer fmt.Println("Goodbye!")
 	return http.ListenAndServe(":8080", router)
+}
+
+// versionHandler returns version information as JSON
+func versionHandler(w http.ResponseWriter, r *http.Request, versionInfo benchdriverapi.VersionInfo) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(versionInfo)
 }
 
 func getEnvOr(name, def string) string {
@@ -75,18 +160,6 @@ func getEnvOr(name, def string) string {
 		return def
 	}
 	return v
-}
-
-func parseEnv[T any](name string, or T, parser func(string) (T, error)) (T, error) {
-	v := os.Getenv(name)
-	if v == "" {
-		return or, nil
-	}
-	parsed, err := parser(v)
-	if err != nil {
-		return or, fmt.Errorf("read env var %s: %w", name, err)
-	}
-	return parsed, nil
 }
 
 func loadK8sClusterRestConfig() (*rest.Config, error) {
