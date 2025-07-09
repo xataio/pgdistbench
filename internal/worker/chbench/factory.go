@@ -38,7 +38,7 @@ func (f *Factory) Prepare(req benchdriverapi.BenchmarkCHBenchConfig) (cmd worker
 	}, nil
 }
 
-func (f *Factory) Cleanup() (worker.Task, error) {
+func (f *Factory) Cleanup(req benchdriverapi.BenchmarkCHBenchConfig) (worker.Task, error) {
 	return worker.Task{
 		Name: benchdriverapi.TaskCHBenchCleanup,
 		Task: f.benchCHBenchTask(func(ctx context.Context, bench *Tester) (any, error) {

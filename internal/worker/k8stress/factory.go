@@ -38,7 +38,7 @@ func (f *Factory) Prepare(req benchdriverapi.BenchmarkK8StressConfig) (cmd worke
 	}, nil
 }
 
-func (f *Factory) Cleanup() (worker.Task, error) {
+func (f *Factory) Cleanup(req benchdriverapi.BenchmarkK8StressConfig) (worker.Task, error) {
 	return worker.Task{
 		Name: benchdriverapi.TaskStressCleanup,
 		Task: f.stressTask(func(ctx context.Context, s *Tester) (any, error) {
@@ -93,12 +93,12 @@ func (f *LazyFactory) Prepare(req benchdriverapi.BenchmarkK8StressConfig) (cmd w
 	return factory.Prepare(req)
 }
 
-func (f *LazyFactory) Cleanup() (worker.Task, error) {
+func (f *LazyFactory) Cleanup(req benchdriverapi.BenchmarkK8StressConfig) (worker.Task, error) {
 	factory, err := f.getFactory()
 	if err != nil {
 		return worker.Task{}, err
 	}
-	return factory.Cleanup()
+	return factory.Cleanup(req)
 }
 
 func (f *LazyFactory) Run(req benchdriverapi.BenchmarkK8StressConfig) (cmd worker.Task, err error) {

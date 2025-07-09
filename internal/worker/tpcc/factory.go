@@ -87,7 +87,7 @@ func (f *Factory) Prepare(req benchdriverapi.BenchmarkGoTPCCConfig) (cmd worker.
 	}, nil
 }
 
-func (f *Factory) Cleanup() (cmd worker.Task, err error) {
+func (f *Factory) Cleanup(_ benchdriverapi.BenchmarkGoTPCCConfig) (cmd worker.Task, err error) {
 	bench, err := New(f.cfg)
 	if err != nil {
 		return cmd, nil

@@ -192,7 +192,7 @@ func (t *Tester) initRun(ctx context.Context, requ benchdriverapi.BenchmarkK8Str
 			return nil, fmt.Errorf("get endpoint for cluster %s: %w", inst.Name, err)
 		}
 		factory := tpccTaskFactoryFromEndpoint(endpoint)
-		cleanupTask, err := factory.Cleanup()
+		cleanupTask, err := factory.Cleanup(benchdriverapi.BenchmarkGoTPCCConfig{})
 		if err != nil {
 			return nil, fmt.Errorf("create cleanup task: %w", err)
 		}
