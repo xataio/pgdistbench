@@ -77,7 +77,7 @@ CONFIG="$1"
 RUN="$2"
 shift 2
 
-RUN_TO="$RUN
+RUN_TO="$RUN"
 SCALE_FACTORS=(1 10 20 35)
 if [ $# -ge 1 ]; then
   RUN_TO="$1"
@@ -88,7 +88,7 @@ if [ $# -ge 1 ]; then
 fi
 
 
-RESULTS="${OUT)/${TEST_PREFIX}/${SETUP}"
+RESULTS="${OUT}/${TEST_PREFIX}/${SETUP}"
 if [ ! -d "$RESULTS" ]; then
   mkdir -p "$RESULTS"
 fi
