@@ -184,8 +184,8 @@ func (w *BenchmarkWorker[Config]) Prepare(ctx context.Context, cfg Config) error
 	return w.sendTask(ctx, cmd)
 }
 
-func (w *BenchmarkWorker[Config]) Cleanup(ctx context.Context) error {
-	cmd, err := w.factory.Cleanup()
+func (w *BenchmarkWorker[Config]) Cleanup(ctx context.Context, cfg Config) error {
+	cmd, err := w.factory.Cleanup(cfg)
 	if err != nil {
 		return err
 	}

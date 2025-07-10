@@ -154,7 +154,7 @@ func (inst *BenchmarkInstance) Check(ctx context.Context) error {
 }
 
 func (inst *BenchmarkInstance) Cleanup(ctx context.Context) error {
-	return inst.postGroupWork(ctx, "cleanup", nil)
+	return inst.postGroupWork(ctx, "cleanup", inst.config.Config)
 }
 
 func (inst *BenchmarkInstance) WaitIdle(ctx context.Context) error {

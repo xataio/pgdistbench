@@ -62,7 +62,8 @@ func CollectList[T any, List ListInterface[T]](
 	list, err := client.List(ctx, opts)
 	if err != nil {
 		if de, ok := err.(interface{ DebugError() (string, any) }); ok {
-			log.Printf(de.DebugError())
+			msg, _ := de.DebugError()
+			log.Printf("%s", msg)
 		}
 
 		log.Printf("List error (%T): %v", err, err)

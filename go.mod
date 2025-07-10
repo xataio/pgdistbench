@@ -3,6 +3,7 @@ module pgdistbench
 go 1.24.3
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/aws-controllers-k8s/rds-controller v1.4.7
 	github.com/cenkalti/backoff/v5 v5.0.2
 	github.com/cloudnative-pg/cloudnative-pg v1.25.0
@@ -21,12 +22,12 @@ require (
 	k8s.io/apimachinery v0.32.1
 	k8s.io/client-go v0.32.1
 	kcl-lang.io/kcl-go v0.11.2
+	mvdan.cc/sh/v3 v3.12.0
 )
 
 replace github.com/pingcap/go-tpc => github.com/urso/go-tpc v0.0.0-20250122111302-3c3dcf74ff1f
 
 require (
-	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/HdrHistogram/hdrhistogram-go v1.0.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20200907205600-7a23bdc65eef // indirect
 	github.com/aws-controllers-k8s/runtime v0.40.0 // indirect
@@ -97,8 +98,8 @@ require (
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/oauth2 v0.26.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/term v0.29.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect

@@ -70,6 +70,6 @@ func (t *Task) IsReady(ctx context.Context) (bool, error) {
 
 type TaskFactory[Config any] interface {
 	Prepare(config Config) (Task, error)
-	Cleanup() (Task, error)
+	Cleanup(config Config) (Task, error)
 	Run(config Config) (Task, error)
 }

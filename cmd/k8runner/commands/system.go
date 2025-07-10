@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log"
 	"pgdistbench/pkg/client/systems"
 
 	"github.com/spf13/cobra"
@@ -155,6 +156,8 @@ func readSystemsConfig(args []string) (systems.SystemsConfig, error) {
 	if len(args) > 0 {
 		system = args[0]
 	}
+
+	log.Printf("Reading systems config for %s", system)
 
 	return readConfigFile[systems.SystemsConfig]("systems." + system)
 }

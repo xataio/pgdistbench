@@ -206,3 +206,60 @@ func ExpBuckets(start float64, factor float64, max float64) []float64 {
 	}
 	return buckets
 }
+
+// SliceMax returns the maximum value in a slice of float64 values
+func SliceMax(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	max := values[0]
+	for _, v := range values[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
+// SliceMin returns the minimum value in a slice of float64 values
+func SliceMin(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	min := values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+// SlicePercentile calculates the percentile value for a slice of float64 values
+func SlicePercentile(values []float64, percentile int) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+
+	if percentile >= 100 {
+		return sorted[len(sorted)-1]
+	}
+	if percentile <= 0 {
+		return sorted[0]
+	}
+
+	index := float64(percentile) / 100.0 * float64(len(sorted)-1)
+	lower := int(index)
+	upper := lower + 1
+
+	if upper >= len(sorted) {
+		return sorted[lower]
+	}
+
+	weight := index - float64(lower)
+	return sorted[lower]*(1-weight) + sorted[upper]*weight
+}

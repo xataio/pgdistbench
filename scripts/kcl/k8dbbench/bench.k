@@ -55,7 +55,7 @@ schema SystemRef:
 schema Benchmark:
     name: str
     runner: RunnerRef
-    config: TPCCConfig | TPCHConfig | CHBenchConfig | K8StressConfig
+    config: TPCCConfig | TPCHConfig | CHBenchConfig | K8StressConfig | ScriptConfig
 
     _benchmark: str
     if typeof(config) == "TPCCConfig":
@@ -66,6 +66,8 @@ schema Benchmark:
         _benchmark = "chbench"
     elif typeof(config) == "K8StressConfig":
         _benchmark = "k8stress"
+    elif typeof(config) == "ScriptConfig":
+        _benchmark = "script"
     else:
         _benchmark = Undefined
     benchmark: str = _benchmark
@@ -180,6 +182,42 @@ schema K8StressPostgresInstance:
     delete_retry?: RetryConfig
     # Retry configuration for cluster readiness checks. Default: {initial_interval: 1s, max_interval: 1m, multiplier: 2.0, max_elapsed_time: 5m}.
     readiness_retry?: RetryConfig
+
+schema FieldAggregationConfig:
+    aggregations: [str]
+    check:
+        all a in aggregations {
+            a in ["avg", "sum", "min", "max", "count"]
+        }, "Invalid aggregation type in aggregations"
+
+schema ErrorDetectionConfig:
+    sources: [str]
+    patterns: [str]
+    override_exit_code: bool = True
+    check:
+        all source in sources {
+            source in ["stdout", "stderr"]
+        }, "Error detection sources must be 'stdout' or 'stderr'"
+        len(patterns) > 0, "At least one error pattern must be specified"
+
+schema ScriptConfig:
+    scripts_path?: str
+    prepare_cmd?: str
+    run_cmd?: str
+    cleanup_cmd?: str
+    parameters?: {str: str}
+    duration?: str
+    output_format: str = "log"
+    aggregation_fields?: {str: FieldAggregationConfig}
+    csv_headers?: [str]
+    collect_raw_records: bool = False
+    error_detection?: ErrorDetectionConfig
+    check:
+        output_format in ["log", "json", "csv"], "output_format must be one of 'log', 'json', 'csv'"
+
+schema ScriptBenchmark(Benchmark):
+    config: ScriptConfig
+    benchmark: str = "script"
 
 
 systemRefList = lambda systems:[System] {

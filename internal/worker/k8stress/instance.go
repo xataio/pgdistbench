@@ -275,7 +275,7 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 		return fmt.Errorf("init run task: %w", err)
 	}
 
-	cleanupTask, err := factory.Cleanup()
+	cleanupTask, err := factory.Cleanup(config)
 	if err != nil {
 		return fmt.Errorf("init cleanup task: %w", err)
 	}

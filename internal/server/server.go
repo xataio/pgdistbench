@@ -16,6 +16,7 @@ import (
 	"pgdistbench/internal/worker/chbench"
 	"pgdistbench/internal/worker/k8stress"
 	"pgdistbench/internal/worker/runner"
+	"pgdistbench/internal/worker/script"
 	"pgdistbench/internal/worker/tpcc"
 	"pgdistbench/internal/worker/tpch"
 )
@@ -62,6 +63,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	work.Mount("/tpch", h.tpchRoutes())
 	work.Mount("/chbench", h.chbenchRoutes())
 	work.Mount("/k8stress", h.stressk8Routes())
+	work.Mount("/script", h.scriptRoutes())
 }
 
 func (h *Handler) tpccRoutes() chi.Router {
@@ -84,14 +86,19 @@ func (h *Handler) stressk8Routes() chi.Router {
 	return benchWorkRouter(h.runner, taskFactory)
 }
 
+func (h *Handler) scriptRoutes() chi.Router {
+	taskFactory := script.NewFactory(h.runner.Config)
+	return benchWorkRouter(h.runner, taskFactory)
+}
+
 func benchWorkRouter[T any, F worker.TaskFactory[T]](r *runner.Runner, factory F) chi.Router {
 	worker := runner.NewBenchmarkWorker(r, factory)
 	router := chi.NewRouter()
 	router.Post("/prepare", requHandler(func(ctx context.Context, requ T) (okResponse, error) {
 		return ok, worker.Prepare(ctx, requ)
 	}))
-	router.Post("/cleanup", statusHandler(func(ctx context.Context) (okResponse, error) {
-		return ok, worker.Cleanup(ctx)
+	router.Post("/cleanup", requHandler(func(ctx context.Context, requ T) (okResponse, error) {
+		return ok, worker.Cleanup(ctx, requ)
 	}))
 	router.Post("/run", requHandler(func(ctx context.Context, requ T) (okResponse, error) {
 		return ok, worker.Run(ctx, requ)

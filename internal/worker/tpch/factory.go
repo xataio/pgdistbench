@@ -30,7 +30,7 @@ func (f *Factory) Prepare(req benchdriverapi.BenchmarkGoTPCHConfig) (cmd worker.
 	}, nil
 }
 
-func (f *Factory) Cleanup() (worker.Task, error) {
+func (f *Factory) Cleanup(_ benchdriverapi.BenchmarkGoTPCHConfig) (worker.Task, error) {
 	return worker.Task{
 		Name: benchdriverapi.TaskTPCHCleanup,
 		Task: f.benchTPCHTask(func(ctx context.Context, bench *Tester) (any, error) {
