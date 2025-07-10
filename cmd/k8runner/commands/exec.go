@@ -13,6 +13,20 @@ import (
 
 type ExecConfig struct{}
 
+// ScriptExitError is a custom error type that carries script exit code information
+type ScriptExitError struct {
+	exitCode int
+	message  string
+}
+
+func (e *ScriptExitError) Error() string {
+	return e.message
+}
+
+func (e *ScriptExitError) ExitCode() int {
+	return e.exitCode
+}
+
 func execCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "exec",
@@ -91,10 +105,18 @@ func execPrepare() *cobra.Command {
 			}
 			fmt.Println("Started prepare task")
 
-			if wait {
-				fmt.Println("Waiting for prepare task to finish")
-				return inst.WaitIdle(ctx)
+			if !wait {
+				return nil
 			}
+
+			fmt.Println("Waiting for prepare task to finish")
+			if err := inst.WaitIdle(ctx); err != nil {
+				return err
+			}
+			if strings.ToLower(inst.Config().Benchmark) == "script" {
+				return execGetAndReportResults(inst, ctx, "prepare", wait, false)
+			}
+
 			return nil
 		}),
 	}
@@ -114,7 +136,7 @@ func execRun() *cobra.Command {
 
 			fmt.Println("Benchmark started")
 			if wait {
-				return execGetAndReportResults(inst, ctx, wait, false)
+				return execGetAndReportResults(inst, ctx, "run", wait, false)
 			}
 			return nil
 		}),
@@ -142,10 +164,20 @@ func execCleanup() *cobra.Command {
 			}
 			fmt.Println("Started cleanup task")
 
-			if wait {
-				fmt.Println("Waiting for cleanup task to finish")
-				return inst.WaitIdle(ctx)
+			if !wait {
+				return nil
 			}
+
+			fmt.Println("Waiting for cleanup task to finish")
+			if err := inst.WaitIdle(ctx); err != nil {
+				return err
+			}
+
+			// Check results and exit with script exit code if requested
+			if strings.ToLower(inst.Config().Benchmark) == "script" {
+				return execGetAndReportResults(inst, ctx, "cleanup", wait, false)
+			}
+
 			return nil
 		}),
 	}
@@ -156,33 +188,49 @@ func execCleanup() *cobra.Command {
 func execResult() *cobra.Command {
 	var wait bool
 	var allowErr bool
+	var phase string
 
 	cmd := &cobra.Command{
 		Use:   "results",
 		Short: "Get benchmark result",
 		RunE: benchExecCommand(func(inst *brun.BenchmarkInstance, ctx context.Context) error {
-			return execGetAndReportResults(inst, ctx, wait, allowErr)
+			return execGetAndReportResults(inst, ctx, phase, wait, allowErr)
 		}),
 	}
 
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the benchmark to finish")
 	cmd.Flags().BoolVar(&allowErr, "allow-error", false, "Allow error in the benchmark result")
+	cmd.Flags().StringVar(&phase, "phase", "run", "Script phase to get results for (prepare, run, cleanup)")
 	return cmd
 }
 
-func execGetAndReportResults(inst *brun.BenchmarkInstance, ctx context.Context, wait bool, allowErr bool) error {
+func execGetAndReportResults(inst *brun.BenchmarkInstance, ctx context.Context, phase string, wait bool, allowErr bool) error {
 	var result any
 	var err error
 
 	switch name := strings.ToLower(inst.Config().Benchmark); name {
 	case "tpcc":
+		if phase != "run" {
+			return fmt.Errorf("phase-specific results are only available for script benchmarks, got benchmark: %s, phase: %s", name, phase)
+		}
 		result, err = inst.TPCC().Result(ctx, true, allowErr)
 	case "tpch":
+		if phase != "run" {
+			return fmt.Errorf("phase-specific results are only available for script benchmarks, got benchmark: %s, phase: %s", name, phase)
+		}
 		result, err = inst.TPCH().Result(ctx, true, allowErr)
 	case "chbench":
+		if phase != "run" {
+			return fmt.Errorf("phase-specific results are only available for script benchmarks, got benchmark: %s, phase: %s", name, phase)
+		}
 		result, err = inst.CHBench().Result(ctx, true, allowErr)
 	case "k8stress":
+		if phase != "run" {
+			return fmt.Errorf("phase-specific results are only available for script benchmarks, got benchmark: %s, phase: %s", name, phase)
+		}
 		result, err = inst.K8Stress().Result(ctx, true)
+	case "script":
+		result, err = inst.Script().Result(ctx, phase, wait, allowErr)
 	default:
 		return fmt.Errorf("unknown benchmark: %s", name)
 	}
@@ -197,7 +245,38 @@ func execGetAndReportResults(inst *brun.BenchmarkInstance, ctx context.Context, 
 	}
 
 	fmt.Printf("%s\n", tmp)
+
+	// Check exit code for script benchmarks and return ScriptExitError if scripts failed
+	if strings.ToLower(inst.Config().Benchmark) == "script" && !allowErr {
+		exitCode := extractScriptExitCode(result)
+		if exitCode != 0 {
+			return &ScriptExitError{
+				exitCode: exitCode,
+				message:  fmt.Sprintf("script %s phase failed with exit code %d", phase, exitCode),
+			}
+		}
+	}
+
 	return nil
+}
+
+// extractScriptExitCode extracts the highest exit code from script results
+// Returns 0 if all runners succeeded, or the highest non-zero exit code found
+func extractScriptExitCode(result any) int {
+	scriptReport, ok := result.(brun.ScriptReport)
+	if !ok {
+		// Not a script result, return 0 (success)
+		return 0
+	}
+
+	maxExitCode := 0
+	for _, runner := range scriptReport.Runners {
+		if runner.ExitCode > maxExitCode {
+			maxExitCode = runner.ExitCode
+		}
+	}
+
+	return maxExitCode
 }
 
 type runE func(*cobra.Command, []string) error

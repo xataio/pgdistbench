@@ -11,10 +11,10 @@ import (
 func TestJSONProcessor_ProcessOutput_SingleRecord(t *testing.T) {
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"tps":        {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggAvg}},
-		"latency_ms": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggP99}},
+		"latency_ms": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggMax}},
 	}
 	aggregator := NewAggregationEngine(config)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	// Test reading a single JSON object
 	input := `{"tps": 123.45, "latency_ms": 5.2, "non_numeric": "ignored"}`
@@ -52,7 +52,7 @@ func TestJSONProcessor_ProcessOutput_MultipleRecords(t *testing.T) {
 		"value": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggSum}},
 	}
 	aggregator := NewAggregationEngine(config)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	// Test reading multiple JSON objects
 	input := `{"value": 10.0}
@@ -85,7 +85,7 @@ func TestJSONProcessor_ProcessOutput_ResilientParsing(t *testing.T) {
 		"valid_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggAvg}},
 	}
 	aggregator := NewAggregationEngine(config)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	// Test with malformed JSON - should process valid records until first error
 	input := `{"valid_field": 100}
@@ -119,7 +119,7 @@ func TestJSONProcessor_ProcessOutput_DifferentNumericTypes(t *testing.T) {
 		"string_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggCount}},
 	}
 	aggregator := NewAggregationEngine(config)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	// Test different numeric types and string conversion
 	input := `{"int_field": 42, "float_field": 3.14, "string_field": "123.45", "non_numeric_string": "abc"}`
@@ -158,7 +158,7 @@ func TestJSONProcessor_ProcessOutput_OnlyConfiguredFields(t *testing.T) {
 		"configured_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggSum}},
 	}
 	aggregator := NewAggregationEngine(config)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	// Input has both configured and unconfigured fields
 	input := `{"configured_field": 100, "unconfigured_field": 200, "another_field": 300}`
@@ -182,7 +182,7 @@ func TestJSONProcessor_ProcessOutput_OnlyConfiguredFields(t *testing.T) {
 
 func TestJSONProcessor_GetFormat(t *testing.T) {
 	aggregator := NewAggregationEngine(nil)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	if processor.GetFormat() != benchdriverapi.FormatJSON {
 		t.Errorf("Expected format 'json', got '%s'", processor.GetFormat())
@@ -191,7 +191,7 @@ func TestJSONProcessor_GetFormat(t *testing.T) {
 
 func TestJSONProcessor_SetExecutionResults(t *testing.T) {
 	aggregator := NewAggregationEngine(nil)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	processor.SetExecutionResults("error message", 1)
 
@@ -213,7 +213,7 @@ func TestExecuteCommand_WithJSONProcessor(t *testing.T) {
 		"counter": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggSum}},
 	}
 	aggregator := NewAggregationEngine(config)
-	processor := NewJSONProcessor(aggregator)
+	processor := NewJSONProcessor(aggregator, false)
 
 	// Use a command that outputs JSON
 	cmdConfig := CommandConfig{
@@ -328,5 +328,33 @@ func TestAggregationEngine_ProcessRecord_FlexibleExtraction(t *testing.T) {
 		if stat.FieldName == "ignored_field" || stat.FieldName == "non_numeric" {
 			t.Errorf("Unexpected field %s in results", stat.FieldName)
 		}
+	}
+}
+
+func TestJSONProcessor_CollectRawRecords(t *testing.T) {
+	config := map[string]benchdriverapi.FieldAggregationConfig{
+		"foo": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggSum}},
+	}
+	aggregator := NewAggregationEngine(config)
+	processor := NewJSONProcessor(aggregator, true)
+
+	input := `{"foo": 1, "bar": "a"}
+{"foo": 2, "bar": "b"}`
+	reader := strings.NewReader(input)
+
+	err := processor.ProcessOutput(reader)
+	if err != nil {
+		t.Fatalf("ProcessOutput failed: %v", err)
+	}
+
+	stats := processor.GetResults()
+	if len(stats.RawRecords) != 2 {
+		t.Errorf("Expected 2 raw records, got %d", len(stats.RawRecords))
+	}
+	if stats.RawRecords[0]["foo"] != float64(1) || stats.RawRecords[0]["bar"] != "a" {
+		t.Errorf("Unexpected first raw record: %+v", stats.RawRecords[0])
+	}
+	if stats.RawRecords[1]["foo"] != float64(2) || stats.RawRecords[1]["bar"] != "b" {
+		t.Errorf("Unexpected second raw record: %+v", stats.RawRecords[1])
 	}
 }

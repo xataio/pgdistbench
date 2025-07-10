@@ -34,10 +34,29 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
 FROM ubuntu:latest
 WORKDIR /
 
+
+# Install sysbench and dependencies
+RUN apt-get update && \
+  apt-get install -y sysbench git && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /usr/bin && \
   mkdir -p /usr/local/go/src && \
   mkdir -p /go/pkg/mod && \
   mkdir /workspace
+
+# Clone sysbench-tpcc repository
+RUN cd /opt && \
+  git clone https://github.com/Percona-Lab/sysbench-tpcc.git && \
+  chmod +x /opt/sysbench-tpcc/*.lua
+
+# Copy custom runner script and make it executable
+COPY scripts/tpcc-runner.sh /opt/sysbench-tpcc/tpcc-runner.sh
+RUN chmod +x /opt/sysbench-tpcc/tpcc-runner.sh
+
+# Set environment variable for sysbench-tpcc location
+ENV BENCH_SCRIPT_HOME=/opt/sysbench-tpcc
 
 COPY --from=builder /workspace/go-tpc/go-tpc /usr/bin/go-tpc
 COPY --from=builder /workspace/driver .

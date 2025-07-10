@@ -38,15 +38,23 @@ type CommandConfig struct {
 	OutputProcessor OutputProcessor
 }
 
-// Note: CommandResult is defined in script.go
+// CommandResult holds the results of command execution
+type CommandResult struct {
+	Stdout   string
+	Stderr   string
+	ExitCode int
+}
 
 // ExecuteCommand executes a shell command with proper environment variable expansion
 func ExecuteCommand(ctx context.Context, config CommandConfig) (CommandResult, error) {
 	result := CommandResult{}
 
 	if config.Command == "" {
+		log.Printf("No command provided")
 		return result, fmt.Errorf("no command provided")
 	}
+
+	log.Printf("Executing command: %s", config.Command)
 
 	// Convert environment map to slice format
 	envSlice := envMapToSlice(config.Environment)

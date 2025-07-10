@@ -302,7 +302,11 @@ func (c *runResultCollector[T]) Collect(ctx context.Context, proxyURLs iter.Seq[
 			select {
 			case <-ctx.Done():
 				return nil
-			case r := <-ch:
+			case r, ok := <-ch:
+				if !ok {
+					// Channel closed, no more data coming
+					return nil
+				}
 				report = append(report, r)
 			}
 		}
@@ -310,6 +314,7 @@ func (c *runResultCollector[T]) Collect(ctx context.Context, proxyURLs iter.Seq[
 	})
 
 	eg.Go(func() error {
+		defer close(ch) // Close channel when fetcher goroutine exits
 		execStatus := func(ctx context.Context, url *url.URL) error {
 			if len(c.path) > 0 {
 				url = url.JoinPath(c.path...)

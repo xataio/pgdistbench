@@ -16,7 +16,6 @@ const (
 	AggMin   AggregationType = "min"
 	AggMax   AggregationType = "max"
 	AggCount AggregationType = "count"
-	AggP99   AggregationType = "p99"
 )
 
 type OutputFormat string
@@ -30,6 +29,15 @@ const (
 type FieldAggregationConfig struct {
 	// List of aggregations to perform on this field.
 	Aggregations []AggregationType `json:"aggregations"`
+}
+
+type ErrorDetectionConfig struct {
+	// Sources to check for errors: ["stdout", "stderr"]
+	Sources []string `json:"sources"`
+	// List of regex patterns to match against the output
+	Patterns []string `json:"patterns"`
+	// Whether to override exit code to 1 when errors detected (default: true)
+	OverrideExitCode *bool `json:"override_exit_code,omitempty"`
 }
 
 type BenchmarkScriptConfig struct {
@@ -71,6 +79,12 @@ type BenchmarkScriptConfig struct {
 	// If not provided, the first line will be treated as column headers.
 	// If not provided and first line is not valid headers, columns will be named "1", "2", "3", etc.
 	CSVHeaders []string `json:"csv_headers,omitempty"`
+
+	// If true, collect and return all raw records as part of the results (for JSON/CSV only).
+	CollectRawRecords *bool `json:"collect_raw_records,omitempty"`
+
+	// If set, enables error detection on script output.
+	ErrorDetection *ErrorDetectionConfig `json:"error_detection,omitempty"`
 }
 
 type AggregatedFieldStats struct {
@@ -89,4 +103,9 @@ type ScriptRunStats struct {
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
 	ExitCode int    `json:"exit_code"`
+	// If raw record collection is enabled, contains all parsed records (for JSON/CSV only)
+	RawRecords []map[string]any `json:"raw_records,omitempty"`
+
+	// If error detection is enabled, contains the list of matched error patterns
+	ErrorsDetected []string `json:"errors_detected,omitempty"`
 }

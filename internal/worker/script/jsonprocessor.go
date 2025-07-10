@@ -16,6 +16,9 @@ type JSONProcessor struct {
 	// Keep track of parsing statistics for debugging
 	totalRecords int64
 	parseErrors  int64
+	// If enabled, collect all parsed records
+	rawRecords []map[string]any
+	collectRaw bool
 }
 
 type fieldProcessor interface {
@@ -24,9 +27,10 @@ type fieldProcessor interface {
 }
 
 // NewJSONProcessor creates a new JSONProcessor with the given aggregation configuration
-func NewJSONProcessor(aggregator fieldProcessor) *JSONProcessor {
+func NewJSONProcessor(aggregator fieldProcessor, collectRaw bool) *JSONProcessor {
 	return &JSONProcessor{
-		engine: aggregator,
+		engine:     aggregator,
+		collectRaw: collectRaw,
 	}
 }
 
@@ -61,6 +65,11 @@ func (p *JSONProcessor) ProcessOutput(reader io.Reader) error {
 		// Successfully parsed a JSON object
 		p.totalRecords++
 
+		// Collect raw record if enabled
+		if p.collectRaw {
+			p.rawRecords = append(p.rawRecords, jsonObj)
+		}
+
 		// Pass the entire record to the aggregation engine
 		p.engine.ProcessRecord(jsonObj)
 	}
@@ -77,6 +86,7 @@ func (p *JSONProcessor) GetResults() benchdriverapi.ScriptRunStats {
 		AggregatedStats: p.engine.GetResults(),
 		Stderr:          p.stderr,
 		ExitCode:        p.exitCode,
+		RawRecords:      p.rawRecords,
 		// Note: Stdout is not populated for JSON format since we process structured data
 	}
 }

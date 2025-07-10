@@ -18,13 +18,17 @@ type CSVProcessor struct {
 	// Keep track of parsing statistics for debugging
 	totalRecords int64
 	parseErrors  int64
+	// If enabled, collect all parsed records
+	rawRecords []map[string]any
+	collectRaw bool
 }
 
 // NewCSVProcessor creates a new CSVProcessor with the given aggregation configuration and headers
-func NewCSVProcessor(aggregator fieldProcessor, csvHeaders []string) *CSVProcessor {
+func NewCSVProcessor(aggregator fieldProcessor, csvHeaders []string, collectRaw bool) *CSVProcessor {
 	return &CSVProcessor{
 		engine:     aggregator,
 		csvHeaders: csvHeaders,
+		collectRaw: collectRaw,
 	}
 }
 
@@ -86,6 +90,11 @@ func (p *CSVProcessor) ProcessOutput(reader io.Reader) error {
 
 		// Convert CSV record to map for aggregation engine
 		recordMap := p.convertRecordToMap(headers, record)
+
+		// Collect raw record if enabled
+		if p.collectRaw {
+			p.rawRecords = append(p.rawRecords, recordMap)
+		}
 
 		// Pass the record to the aggregation engine
 		p.engine.ProcessRecord(recordMap)
@@ -161,6 +170,7 @@ func (p *CSVProcessor) GetResults() benchdriverapi.ScriptRunStats {
 		AggregatedStats: p.engine.GetResults(),
 		Stderr:          p.stderr,
 		ExitCode:        p.exitCode,
+		RawRecords:      p.rawRecords,
 		// Note: Stdout is not populated for CSV format since we process structured data
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"pgdistbench/api/benchdriverapi"
@@ -13,12 +15,6 @@ import (
 
 type Tester struct {
 	workerConfig worker.Config
-}
-
-type CommandResult struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
 }
 
 func New(cfg worker.Config) (Tester, error) {
@@ -32,7 +28,7 @@ func (t *Tester) Close() error {
 	return nil
 }
 
-func (t *Tester) Prepare(ctx context.Context, cfg benchdriverapi.BenchmarkScriptConfig) (result CommandResult, err error) {
+func (t *Tester) Prepare(ctx context.Context, cfg benchdriverapi.BenchmarkScriptConfig) (result benchdriverapi.ScriptRunStats, err error) {
 	log.Printf("Script Prepare: starting")
 	defer log.Printf("Script Prepare: finished")
 
@@ -44,9 +40,11 @@ func (t *Tester) Prepare(ctx context.Context, cfg benchdriverapi.BenchmarkScript
 	return result, err
 }
 
-func (t *Tester) Cleanup(ctx context.Context, cfg benchdriverapi.BenchmarkScriptConfig) (result CommandResult, err error) {
+func (t *Tester) Cleanup(ctx context.Context, cfg benchdriverapi.BenchmarkScriptConfig) (result benchdriverapi.ScriptRunStats, err error) {
 	log.Printf("Script Cleanup: starting")
 	defer log.Printf("Script Cleanup: finished")
+
+	log.Printf("Script Cleanup Command: %s", cfg.CleanupCmd)
 
 	result, err = t.executeCommandSimple(ctx, cfg, cfg.CleanupCmd)
 	if err != nil {
@@ -129,6 +127,12 @@ func (t *Tester) createOutputProcessor(cfg benchdriverapi.BenchmarkScriptConfig)
 		format = *cfg.OutputFormat
 	}
 
+	// Determine if raw record collection is enabled
+	collectRaw := false
+	if cfg.CollectRawRecords != nil && *cfg.CollectRawRecords {
+		collectRaw = true
+	}
+
 	// Create appropriate processor
 	switch format {
 	case benchdriverapi.FormatLog:
@@ -140,7 +144,7 @@ func (t *Tester) createOutputProcessor(cfg benchdriverapi.BenchmarkScriptConfig)
 			aggregationConfig = make(map[string]benchdriverapi.FieldAggregationConfig)
 		}
 		aggregator := NewAggregationEngine(aggregationConfig)
-		return NewJSONProcessor(aggregator)
+		return NewJSONProcessor(aggregator, collectRaw)
 	case benchdriverapi.FormatCSV:
 		// Create CSV processor with aggregation configuration
 		aggregationConfig := cfg.AggregationFields
@@ -151,11 +155,51 @@ func (t *Tester) createOutputProcessor(cfg benchdriverapi.BenchmarkScriptConfig)
 
 		// Pass CSV headers from configuration
 		csvHeaders := cfg.CSVHeaders
-		return NewCSVProcessor(aggregator, csvHeaders)
+		return NewCSVProcessor(aggregator, csvHeaders, collectRaw)
 	default:
 		log.Printf("Unknown format %s, falling back to log format", format)
 		return NewLogProcessor()
 	}
+}
+
+func (t *Tester) detectErrors(stats benchdriverapi.ScriptRunStats, cfg benchdriverapi.BenchmarkScriptConfig) benchdriverapi.ScriptRunStats {
+	if cfg.ErrorDetection == nil {
+		return stats
+	}
+
+	var contentToCheck strings.Builder
+	for _, source := range cfg.ErrorDetection.Sources {
+		switch source {
+		case "stdout":
+			contentToCheck.WriteString(stats.Stdout)
+		case "stderr":
+			contentToCheck.WriteString(stats.Stderr)
+		}
+	}
+
+	content := contentToCheck.String()
+	var detectedErrors []string
+
+	for _, pattern := range cfg.ErrorDetection.Patterns {
+		matched, err := regexp.MatchString(pattern, content)
+		if err != nil {
+			log.Printf("Invalid regex pattern '%s': %v", pattern, err)
+			continue
+		}
+		if matched {
+			detectedErrors = append(detectedErrors, pattern)
+		}
+	}
+
+	if len(detectedErrors) > 0 {
+		stats.ErrorsDetected = detectedErrors
+		log.Printf("Script errors detected: %v", detectedErrors)
+		if cfg.ErrorDetection.OverrideExitCode == nil || *cfg.ErrorDetection.OverrideExitCode {
+			stats.ExitCode = 1
+		}
+	}
+
+	return stats
 }
 
 // executeCommandAndCollect executes a command using the new streaming output processing infrastructure
@@ -201,13 +245,16 @@ func (t *Tester) executeCommandAndCollect(ctx context.Context, cfg benchdriverap
 		log.Printf("Script: stdout: %s", stats.Stdout)
 	}
 
+	// Error detection
+	stats = t.detectErrors(stats, cfg)
+
 	return stats, nil
 }
 
 // executeCommandSimple is a fallback for commands that don't need streaming processing
-func (t *Tester) executeCommandSimple(ctx context.Context, cfg benchdriverapi.BenchmarkScriptConfig, command string) (CommandResult, error) {
+func (t *Tester) executeCommandSimple(ctx context.Context, cfg benchdriverapi.BenchmarkScriptConfig, command string) (benchdriverapi.ScriptRunStats, error) {
 	if command == "" {
-		return CommandResult{}, nil
+		return benchdriverapi.ScriptRunStats{}, nil
 	}
 
 	// Build environment
@@ -229,7 +276,7 @@ func (t *Tester) executeCommandSimple(ctx context.Context, cfg benchdriverapi.Be
 	// Execute command using the command module
 	result, err := ExecuteCommand(ctx, cmdConfig)
 	if err != nil {
-		return result, fmt.Errorf("execute command: %w", err)
+		return benchdriverapi.ScriptRunStats{}, fmt.Errorf("execute command: %w", err)
 	}
 	log.Printf("Script: exit code %d", result.ExitCode)
 	if result.Stderr != "" {
@@ -239,5 +286,16 @@ func (t *Tester) executeCommandSimple(ctx context.Context, cfg benchdriverapi.Be
 		log.Printf("Script: stdout: %s", result.Stdout)
 	}
 
-	return result, err
+	// Convert CommandResult to ScriptRunStats
+	stats := benchdriverapi.ScriptRunStats{
+		Stdout:   result.Stdout,
+		Stderr:   result.Stderr,
+		ExitCode: result.ExitCode,
+		// AggregatedStats and RawRecords remain empty for simple execution
+	}
+
+	// Error detection
+	stats = t.detectErrors(stats, cfg)
+
+	return stats, nil
 }
