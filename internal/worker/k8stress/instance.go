@@ -246,10 +246,18 @@ func (si *stressInstance) Run(ctx context.Context, op clusterOp) (err error) {
 			return nil, nil
 		}
 
-		expBackoff := backoff.NewExponentialBackOff()
-		expBackoff.MaxInterval = 1 * time.Minute
+		// Default configuration for readiness retries
+		defaultReadinessRetry := benchdriverapi.RetryConfig{
+			InitialInterval: &benchdriverapi.Duration{Duration: 1 * time.Second},
+			MaxInterval:     &benchdriverapi.Duration{Duration: 1 * time.Minute},
+			Multiplier:      func() *float64 { f := 2.0; return &f }(),
+			MaxElapsedTime:  &benchdriverapi.Duration{Duration: 5 * time.Minute},
+		}
 
-		_, err := backoff.Retry(ctx, operation, backoff.WithMaxTries(5))
+		expBackoff := buildBackoffConfig(si.config.Instance.ReadinessRetry, defaultReadinessRetry)
+		maxElapsedTime := getRetryMaxElapsedTime(si.config.Instance.ReadinessRetry, defaultReadinessRetry)
+
+		_, err := backoff.Retry(ctx, operation, backoff.WithBackOff(expBackoff), backoff.WithMaxElapsedTime(maxElapsedTime))
 		if err != nil {
 			return fmt.Errorf("check ready failed: %w", err)
 		}
@@ -478,6 +486,40 @@ func (si *stressInstance) deregister() {
 	delete(si.registry.starting, si.name)
 }
 
+// buildBackoffConfig creates a backoff configuration from RetryConfig
+func buildBackoffConfig(config *benchdriverapi.RetryConfig, defaults benchdriverapi.RetryConfig) *backoff.ExponentialBackOff {
+	expBackoff := backoff.NewExponentialBackOff()
+
+	// Use provided config value or fall back to default
+	if config != nil && config.InitialInterval != nil {
+		expBackoff.InitialInterval = config.InitialInterval.Duration
+	} else {
+		expBackoff.InitialInterval = defaults.InitialInterval.Duration
+	}
+
+	if config != nil && config.MaxInterval != nil {
+		expBackoff.MaxInterval = config.MaxInterval.Duration
+	} else {
+		expBackoff.MaxInterval = defaults.MaxInterval.Duration
+	}
+
+	if config != nil && config.Multiplier != nil {
+		expBackoff.Multiplier = *config.Multiplier
+	} else {
+		expBackoff.Multiplier = *defaults.Multiplier
+	}
+
+	return expBackoff
+}
+
+// getRetryMaxElapsedTime gets the max elapsed time from config or defaults
+func getRetryMaxElapsedTime(config *benchdriverapi.RetryConfig, defaults benchdriverapi.RetryConfig) time.Duration {
+	if config != nil && config.MaxElapsedTime != nil {
+		return config.MaxElapsedTime.Duration
+	}
+	return defaults.MaxElapsedTime.Duration
+}
+
 func (si *stressInstance) destroyAllWithRetry(ctx context.Context, namespace, name string) error {
 	log.Printf("Instance %s: destroying cluster with retry logic", name)
 
@@ -490,13 +532,18 @@ func (si *stressInstance) destroyAllWithRetry(ctx context.Context, namespace, na
 		return nil, nil
 	}
 
-	expBackoff := backoff.NewExponentialBackOff()
-	expBackoff.InitialInterval = 5 * time.Second
-	expBackoff.MaxInterval = 1 * time.Minute
-	expBackoff.Multiplier = 2.0
+	// Default configuration for deletion retries
+	defaultDeleteRetry := benchdriverapi.RetryConfig{
+		InitialInterval: &benchdriverapi.Duration{Duration: 5 * time.Second},
+		MaxInterval:     &benchdriverapi.Duration{Duration: 1 * time.Minute},
+		Multiplier:      func() *float64 { f := 2.0; return &f }(),
+		MaxElapsedTime:  &benchdriverapi.Duration{Duration: 20 * time.Minute},
+	}
 
-	// Retry for up to 20 attempts with exponential backoff
-	_, err := backoff.Retry(ctx, operation, backoff.WithMaxTries(20))
+	expBackoff := buildBackoffConfig(si.config.Instance.DeleteRetry, defaultDeleteRetry)
+	maxElapsedTime := getRetryMaxElapsedTime(si.config.Instance.DeleteRetry, defaultDeleteRetry)
+
+	_, err := backoff.Retry(ctx, operation, backoff.WithBackOff(expBackoff), backoff.WithMaxElapsedTime(maxElapsedTime))
 	if err != nil {
 		return fmt.Errorf("destroy with retry failed after all attempts: %w", err)
 	}

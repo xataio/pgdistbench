@@ -56,6 +56,11 @@ type K8StressPostgresInstance struct {
 	Metadata      map[string]any `json:"metadata"`       // optional CNPG Cluster meta-data
 	Spec          map[string]any `json:"spec"`           // optional CNPG Cluster spec
 	CreateTimeout *Duration      `json:"create_timeout"` // cluster creation timeout. Default: 1m.
+
+	// Retry configuration for cluster deletion operations. Default: {InitialInterval: 5s, MaxInterval: 1m, Multiplier: 2.0, MaxElapsedTime: 20m}.
+	DeleteRetry *RetryConfig `json:"delete_retry"`
+	// Retry configuration for cluster readiness checks. Default: {InitialInterval: 1s, MaxInterval: 1m, Multiplier: 2.0, MaxElapsedTime: 5m}.
+	ReadinessRetry *RetryConfig `json:"readiness_retry"`
 }
 
 type K8StressPostgresTest struct {

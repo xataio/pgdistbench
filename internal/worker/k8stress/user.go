@@ -167,7 +167,7 @@ func (u *stressUser) execOp(ctx context.Context, op clusterOp) (err error) {
 		log.Printf("branching cluster: not yet implemented")
 	case clusterOpDelete:
 		var ok bool
-		ok, err = u.deleteCluster(ctx)
+		ok, err = u.deleteCluster()
 		if ok {
 			u.tester.metrics.Run.DeleteInstanceOps.WithLabelValues(u.name).Inc()
 		}
@@ -202,7 +202,7 @@ func (u *stressUser) createCluster(ctx context.Context) error {
 	return nil
 }
 
-func (u *stressUser) deleteCluster(ctx context.Context) (bool, error) {
+func (u *stressUser) deleteCluster() (bool, error) {
 	u.registry.mu.Lock()
 	defer u.registry.mu.Unlock()
 
@@ -210,32 +210,40 @@ func (u *stressUser) deleteCluster(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	dropCandidates := make([]*stressInstance, 0, len(u.registry.active))
+	var canDeleteCandidates []*stressInstance
+	var mustDeleteCandidates []*stressInstance
 	for name := range u.registry.active {
 		inst := u.registry.instances[name]
 		if inst.mustDelete() {
-			dropCandidates = []*stressInstance{u.registry.instances[name]}
+			mustDeleteCandidates = append(mustDeleteCandidates, inst)
 			break
 		}
 		if inst.canDelete() {
-			dropCandidates = append(dropCandidates, inst)
+			canDeleteCandidates = append(canDeleteCandidates, inst)
 		}
 	}
 
-	if len(dropCandidates) == 0 {
+	var inst *stressInstance
+	if len(mustDeleteCandidates) > 0 {
+		inst = findOldestInstance(mustDeleteCandidates)
+	} else if len(canDeleteCandidates) > 0 {
+		inst = findOldestInstance(canDeleteCandidates)
+	} else {
 		return false, nil
 	}
 
-	var inst *stressInstance
-	if len(dropCandidates) == 1 {
-		inst = dropCandidates[0]
-	} else {
-		inst = prop.Uniform(dropCandidates).Next()
-	}
-
 	inst.cancel()
-
 	return true, nil
+}
+
+func findOldestInstance(instances []*stressInstance) *stressInstance {
+	oldest := instances[0]
+	for _, inst := range instances {
+		if inst.createTime.Before(oldest.createTime) {
+			oldest = inst
+		}
+	}
+	return oldest
 }
 
 func createTimer(dist *benchdriverapi.JitterDuration, def prop.UniformJitterDurationValue) prop.UniformJitterDurationValue {

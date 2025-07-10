@@ -60,6 +60,16 @@ if ! [[ "$RUN_TO" =~ ^[0-9]+$ ]]; then
 fi
 
 RUNNER_CMD="k8runner"
+if ! command -v "$RUNNER_CMD" >/dev/null 2>&1; then
+    RUNNER_CMD="$(dirname "$(readlink -f "$0")")/../k8runner"
+    if [ ! -x "$RUNNER_CMD" ]; then
+        echo "Error: k8runner not found at $RUNNER_CMD or not executable"
+        exit 1
+    fi
+    echo "Using k8runner from $RUNNER_CMD"
+fi
+
+
 if [ -n "$K8SCTX" ]; then
     RUNNER_CMD="$RUNNER_CMD --context $K8SCTX"
 fi

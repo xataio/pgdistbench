@@ -141,6 +141,16 @@ schema JitteredInterval:
     duration: str
     jitter: str
 
+schema RetryConfig:
+    # Initial retry interval. Default: 1s.
+    initial_interval?: str
+    # Maximum retry interval. Default: 1m.
+    max_interval?: str
+    # Backoff multiplier. Default: 2.0.
+    multiplier?: float
+    # Maximum total time to retry. Default: 5m.
+    max_elapsed_time?: str
+
 schema K8StressPostgresConfig:
     weight?: int
 
@@ -164,6 +174,12 @@ schema K8StressPostgresInstance:
     metadata?: {:}
     annotations?: {:}
     spec: cnpg.Cluster
+    create_timeout?: str # cluster creation timeout. Default: 1m.
+    
+    # Retry configuration for cluster deletion operations. Default: {initial_interval: 5s, max_interval: 1m, multiplier: 2.0, max_elapsed_time: 20m}.
+    delete_retry?: RetryConfig
+    # Retry configuration for cluster readiness checks. Default: {initial_interval: 1s, max_interval: 1m, multiplier: 2.0, max_elapsed_time: 5m}.
+    readiness_retry?: RetryConfig
 
 
 systemRefList = lambda systems:[System] {

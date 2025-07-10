@@ -175,6 +175,18 @@ type Duration struct {
 	time.Duration
 }
 
+// RetryConfig configures retry behavior for operations with exponential backoff
+type RetryConfig struct {
+	// Initial retry interval. Default: 1s.
+	InitialInterval *Duration `json:"initial_interval"`
+	// Maximum retry interval. Default: 1m.
+	MaxInterval *Duration `json:"max_interval"`
+	// Backoff multiplier. Default: 2.0.
+	Multiplier *float64 `json:"multiplier"`
+	// Maximum total time to retry. Default: 5m.
+	MaxElapsedTime *Duration `json:"max_elapsed_time"`
+}
+
 func (d Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
