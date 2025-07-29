@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"pgdistbench/api/benchdriverapi"
-	"pgdistbench/pkg/stats"
 	"log"
 	"os"
+	"pgdistbench/api/benchdriverapi"
+	"pgdistbench/pkg/stats"
 	"strings"
 )
 

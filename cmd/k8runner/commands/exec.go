@@ -208,6 +208,12 @@ func execGetAndReportResults(inst *brun.BenchmarkInstance, ctx context.Context, 
 	var result any
 	var err error
 
+	if wait {
+		if err := inst.WaitIdle(ctx); err != nil {
+			return err
+		}
+	}
+
 	switch name := strings.ToLower(inst.Config().Benchmark); name {
 	case "tpcc":
 		if phase != "run" {

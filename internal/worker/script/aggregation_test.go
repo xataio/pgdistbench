@@ -6,8 +6,8 @@ import (
 	"pgdistbench/api/benchdriverapi"
 )
 
-func TestAggregationEngine_Story4_2_SumAndAverage(t *testing.T) {
-	// Story 4.2: Test sum and average calculations
+func TestAggregationEngine_SumAndAverageAggregation(t *testing.T) {
+	// Test sum and average calculations
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"sum_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggSum}},
 		"avg_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggAvg}},
@@ -90,7 +90,7 @@ func TestAggregationEngine_Story4_2_SumAndAverage(t *testing.T) {
 	}
 }
 
-func TestAggregationEngine_Story4_2_EdgeCases(t *testing.T) {
+func TestAggregationEngine_SumAndAverageEdgeCases(t *testing.T) {
 	// Test edge cases for sum and average calculations
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"single_value": {Aggregations: []benchdriverapi.AggregationType{
@@ -171,7 +171,7 @@ func TestAggregationEngine_Story4_2_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestAggregationEngine_Story4_2_NoConfiguredAggregations(t *testing.T) {
+func TestAggregationEngine_CountOnlyAggregation(t *testing.T) {
 	// Test field with count only (no sum or avg configured)
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"count_only": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggCount}},
@@ -199,8 +199,8 @@ func TestAggregationEngine_Story4_2_NoConfiguredAggregations(t *testing.T) {
 	}
 }
 
-func TestAggregationEngine_Story4_3_MinAndMax(t *testing.T) {
-	// Story 4.3: Test min and max calculations
+func TestAggregationEngine_MinAndMaxAggregation(t *testing.T) {
+	// Test min and max calculations
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"min_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggMin}},
 		"max_field": {Aggregations: []benchdriverapi.AggregationType{benchdriverapi.AggMax}},
@@ -305,7 +305,7 @@ func TestAggregationEngine_Story4_3_MinAndMax(t *testing.T) {
 	}
 }
 
-func TestAggregationEngine_Story4_3_EdgeCases(t *testing.T) {
+func TestAggregationEngine_MinAndMaxEdgeCases(t *testing.T) {
 	// Test edge cases for min and max calculations
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"single_value": {Aggregations: []benchdriverapi.AggregationType{
@@ -396,8 +396,8 @@ func TestAggregationEngine_Story4_3_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestAggregationEngine_ComprehensiveIntegration_Stories4_1_4_2_4_3(t *testing.T) {
-	// Comprehensive integration test for Stories 4.1, 4.2, and 4.3
+func TestAggregationEngine_AllAggregationTypesIntegration(t *testing.T) {
+	// Comprehensive integration test for all aggregation types (count, sum, avg, min, max)
 	config := map[string]benchdriverapi.FieldAggregationConfig{
 		"comprehensive_field": {Aggregations: []benchdriverapi.AggregationType{
 			benchdriverapi.AggCount, benchdriverapi.AggSum, benchdriverapi.AggAvg,

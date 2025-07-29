@@ -78,7 +78,7 @@ k8runner -c $CONTEXT systems list local
 k8runner -c $CONTEXT runner apply local
 ```
 
-### 3. Execute the Sysbench TPCC Benchmark
+### Execute the Sysbench TPCC Benchmark
 
 #### Prepare Database
 
@@ -102,6 +102,32 @@ k8runner -c $CONTEXT exec results sysbench_tpcc
 
 ```bash
 k8runner -c $CONTEXT exec cleanup sysbench_tpcc
+```
+
+### Execute OLTP readonly demo
+
+#### Prepare Database
+
+```bash
+k8runner -c $CONTEXT exec prepare --wait sysbench_oltp_read_only
+```
+
+#### Run Benchmark
+
+```bash
+k8runner -c $CONTEXT exec run sysbench_oltp_read_only
+```
+
+#### Get Results
+
+```bash
+k8runner -c $CONTEXT exec results sysbench_oltp_read_only
+```
+
+#### Cleanup Database
+
+```bash
+k8runner -c $CONTEXT exec cleanup sysbench_oltp_read_only
 ```
 
 ### 4. Teardown
