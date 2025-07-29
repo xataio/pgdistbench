@@ -12,6 +12,7 @@ schema Cluster:
     bootstrap?: {:}
     resources?: {:}
     storage?: {:}
+    walStorage?: {:}
     nodeSelector?: {:}
 
 specs = {
