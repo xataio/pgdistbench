@@ -664,27 +664,34 @@ func (c *runnersClient) initDeploymentConfig(
 	}
 
 	podSpec := &dep.Spec.Template.Spec
-	podSpec.Containers = []corev1.Container{
+	if len(podSpec.Containers) == 0 {
+		podSpec.Containers = make([]corev1.Container, 1)
+	}
+
+	containerSpec := &podSpec.Containers[0]
+	if containerSpec.Name == "" {
+		containerSpec.Name = "benchdriver"
+	}
+	if containerSpec.Image == "" {
+		containerSpec.Image = driverImage
+	}
+	if containerSpec.ImagePullPolicy == "" {
+		containerSpec.ImagePullPolicy = pullPolicy
+	}
+	containerSpec.Resources = resources
+	containerSpec.Ports = []corev1.ContainerPort{
 		{
-			Name:            "benchdriver",
-			Image:           driverImage,
-			ImagePullPolicy: pullPolicy,
-			Resources:       resources,
-			Ports: []corev1.ContainerPort{
-				{
-					Name:          "api",
-					ContainerPort: 8080,
-					Protocol:      corev1.ProtocolTCP,
-				},
-				{
-					Name:          "dlv",
-					ContainerPort: 2345,
-					Protocol:      corev1.ProtocolTCP,
-				},
-			},
-			Env: envVars,
+			Name:          "api",
+			ContainerPort: 8080,
+			Protocol:      corev1.ProtocolTCP,
+		},
+		{
+			Name:          "dlv",
+			ContainerPort: 2345,
+			Protocol:      corev1.ProtocolTCP,
 		},
 	}
+	containerSpec.Env = append(containerSpec.Env, envVars...)
 
 	// copy generated pod labels to deployment selector
 	if dep.Spec.Selector == nil {
