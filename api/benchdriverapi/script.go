@@ -21,9 +21,10 @@ const (
 type OutputFormat string
 
 const (
-	FormatLog  OutputFormat = "log"  // Default, just captures stdout
-	FormatJSON OutputFormat = "json" // Expects JSON objects per line
-	FormatCSV  OutputFormat = "csv"  // Expects a CSV with a header
+	FormatLog      OutputFormat = "log"      // Default, just captures stdout
+	FormatJSON     OutputFormat = "json"     // Expects JSON objects per line
+	FormatCSV      OutputFormat = "csv"      // Expects a CSV with a header
+	FormatSysbench OutputFormat = "sysbench" // Expects native sysbench output format
 )
 
 type FieldAggregationConfig struct {
@@ -69,6 +70,9 @@ type BenchmarkScriptConfig struct {
 	// Defines the format of the script's standard output.
 	// "log" (default), "json", or "csv".
 	OutputFormat *OutputFormat `json:"output_format"`
+
+	// If true, log the script's standard output to the worker's standard output.
+	LogStdout *bool `json:"log_stdout,omitempty"`
 
 	// Defines how to aggregate fields from the structured output (json/csv).
 	// The key is the field name from the output.

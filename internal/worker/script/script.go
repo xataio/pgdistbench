@@ -134,6 +134,7 @@ func (t *Tester) createOutputProcessor(cfg benchdriverapi.BenchmarkScriptConfig)
 	}
 
 	// Create appropriate processor
+	var processor OutputProcessor
 	switch format {
 	case benchdriverapi.FormatLog:
 		return NewLogProcessor()
@@ -144,7 +145,7 @@ func (t *Tester) createOutputProcessor(cfg benchdriverapi.BenchmarkScriptConfig)
 			aggregationConfig = make(map[string]benchdriverapi.FieldAggregationConfig)
 		}
 		aggregator := NewAggregationEngine(aggregationConfig)
-		return NewJSONProcessor(aggregator, collectRaw)
+		processor = NewJSONProcessor(aggregator, collectRaw)
 	case benchdriverapi.FormatCSV:
 		// Create CSV processor with aggregation configuration
 		aggregationConfig := cfg.AggregationFields
@@ -155,11 +156,25 @@ func (t *Tester) createOutputProcessor(cfg benchdriverapi.BenchmarkScriptConfig)
 
 		// Pass CSV headers from configuration
 		csvHeaders := cfg.CSVHeaders
-		return NewCSVProcessor(aggregator, csvHeaders, collectRaw)
+		processor = NewCSVProcessor(aggregator, csvHeaders, collectRaw)
+	case benchdriverapi.FormatSysbench:
+		// Create sysbench processor with aggregation configuration
+		aggregationConfig := cfg.AggregationFields
+		if aggregationConfig == nil {
+			aggregationConfig = make(map[string]benchdriverapi.FieldAggregationConfig)
+		}
+		aggregator := NewAggregationEngine(aggregationConfig)
+		processor = NewSysbenchProcessorWithConfig(aggregator, collectRaw)
 	default:
 		log.Printf("Unknown format %s, falling back to log format", format)
-		return NewLogProcessor()
+		processor = NewLogProcessor()
 	}
+
+	if cfg.LogStdout != nil && *cfg.LogStdout {
+		processor = StdoutProcessor(processor)
+	}
+
+	return processor
 }
 
 func (t *Tester) detectErrors(stats benchdriverapi.ScriptRunStats, cfg benchdriverapi.BenchmarkScriptConfig) benchdriverapi.ScriptRunStats {

@@ -208,12 +208,13 @@ schema ScriptConfig:
     parameters?: {str: str}
     duration?: str
     output_format: str = "log"
+    log_stdout: bool = False
     aggregation_fields?: {str: FieldAggregationConfig}
     csv_headers?: [str]
     collect_raw_records: bool = False
     error_detection?: ErrorDetectionConfig
     check:
-        output_format in ["log", "json", "csv"], "output_format must be one of 'log', 'json', 'csv'"
+        output_format in ["log", "json", "csv", "sysbench"], "output_format must be one of 'log', 'json', 'csv', 'sysbench'"
 
 schema ScriptBenchmark(Benchmark):
     config: ScriptConfig
